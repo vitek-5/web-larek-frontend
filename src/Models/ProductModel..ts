@@ -10,7 +10,7 @@ export interface IProduct {
     inBasket?: boolean;
 }
 
-    export class ProductModel {
+export class ProductModel {
     constructor(
         public data: IProduct = {
             id: '',
@@ -42,14 +42,16 @@ export interface IProduct {
     addToBasket() {
         if (!this.data.inBasket) {
             this.data.inBasket = true;
-            this.events.emit('basket:add', this.data);
+            this.events.emit('basket:add', this);
+            this.events.emit('model:updated');
         }
     }
 
     removeFromBasket() {
         if (this.data.inBasket) {
             this.data.inBasket = false;
-            this.events.emit('basket:remove', { id: this.id }); // Исправлено здесь
+            this.events.emit('basket:remove', { id: this.id });
+            this.events.emit('model:updated');
         }
     }
 

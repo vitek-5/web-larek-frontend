@@ -1,4 +1,3 @@
-import { EventEmitter } from "../base/Event";
 import { BaseView } from "../base/View";
 import { ensureElement } from "../utils/utils";
 
@@ -7,21 +6,18 @@ interface SuccessData {
 }
 
 export class SuccessView extends BaseView<SuccessData> {
-    protected description: HTMLElement;
-    protected closeButton: HTMLElement;
-
-    constructor(container: HTMLElement, protected events: EventEmitter) {
+    constructor(container: HTMLElement) { // Только 1 параметр
         super(container);
-        this.description = ensureElement('.order-success__description', container);
-        this.closeButton = ensureElement('.order-success__close', container);
 
-        this.closeButton.addEventListener('click', () => {
-            events.emit('modal:close');
+        const successButton = ensureElement('.order-success__close', container);
+        successButton.addEventListener('click', () => {
+            container.dispatchEvent(new Event('success:close', { bubbles: true }));
         });
     }
 
     render(data: SuccessData): HTMLElement {
-        this.setText(this.description, `Списано ${data.total} синапсов`);
+        const description = ensureElement('.order-success__description', this.container);
+        description.textContent = `Списано ${data.total} синапсов`;
         return this.container;
     }
 }

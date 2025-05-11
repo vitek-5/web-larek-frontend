@@ -15,8 +15,14 @@ export class AppState {
     }
 
     clearBasket() {
+        this.basket.forEach(item => {
+            if (item && item.data) {
+                item.data.inBasket = false;
+            }
+        });
         this.basket = [];
-        this.events.emit('basket:changed', this.basket);
+        this.events.emit('basket:changed');
+        this.events.emit('catalog:changed', this.catalog);
     }
 
     getCatalog(): ProductModel[] {

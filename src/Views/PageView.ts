@@ -9,11 +9,13 @@ interface PageData {
 export class PageView extends BaseView<PageData> {
     private counter: HTMLElement;
     private basketButton: HTMLElement;
+    private gallery: HTMLElement;
 
     constructor(container: HTMLElement, protected events: EventEmitter) {
         super(container);
         this.counter = ensureElement('.header__basket-counter', container);
         this.basketButton = ensureElement('.header__basket', container);
+        this.gallery = ensureElement('.gallery', container);
 
         this.basketButton.addEventListener('click', () => {
             events.emit('basket:open');
@@ -27,5 +29,10 @@ export class PageView extends BaseView<PageData> {
 
     setLocked(locked: boolean) {
         this.container.classList.toggle('page__wrapper_locked', locked);
+    }
+
+    setGalleryItems(items: HTMLElement[]) {
+        this.gallery.innerHTML = '';
+        items.forEach(item => this.gallery.appendChild(item));
     }
 }

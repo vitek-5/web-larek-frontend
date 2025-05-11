@@ -1,10 +1,9 @@
 import { EventEmitter } from "../base/Event";
 import { BaseView } from "../base/View";
-import { ensureElement, cloneTemplate } from "../utils/utils";
-import { ProductModel } from "../Models/ProductModel.";
+import { ensureElement } from "../utils/utils";
 
 interface BasketData {
-    items: ProductModel[];
+    items: HTMLElement[];
     total: number;
 }
 
@@ -34,21 +33,7 @@ export class BasketView extends BaseView<BasketData> {
             this.list.innerHTML = '<p>Корзина пуста</p>';
             this.button.disabled = true;
         } else {
-            data.items.forEach((item, index) => {
-                const itemElement = cloneTemplate('#card-basket');
-                itemElement.querySelector('.card__title').textContent = item.title;
-                itemElement.querySelector('.card__price').textContent =
-                    item.price ? `${item.price} синапсов` : 'Бесценно';
-                itemElement.querySelector('.basket__item-index').textContent = String(index + 1);
-
-                const deleteButton = itemElement.querySelector('.basket__item-delete');
-                deleteButton?.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.events.emit('basket:remove', { id: item.id });
-                });
-
-                this.list.appendChild(itemElement);
-            });
+            data.items.forEach(item => this.list.appendChild(item));
             this.button.disabled = false;
         }
 

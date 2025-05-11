@@ -7,13 +7,22 @@ import { SuccessView } from "../Views/SuccessView";
 import { ProductView } from "../Views/ProductView";
 import { BasketPresenter } from "./BasketPresenter";
 import { ensureElement, cloneTemplate } from "../utils/utils";
-import { IProduct, ProductModel } from "../Models/ProductModel.";
+import { ProductModel } from "../Models/ProductModel.";
 import { ProductCardView } from "../Views/ProductCardView";
 import { ContactsFormView } from "../Views/ContactsFormView";
 import { OrderFormsPresenter } from "./OrderFormsPresenter";
 import { ApiService } from "../base/ApiService";
 import { EventEmitter } from "../base/Event";
-import { ProductCardPresenter } from "./ProductCardPresenter";
+import { BasketItemView } from "../Views/BasketItemView";
+
+interface AppViews {
+    pageView: PageView;
+    modalView: ModalView;
+    basketView: BasketView;
+    orderFormView: OrderFormView;
+    contactsFormView: ContactsFormView;
+    successView: SuccessView;
+}
 
 interface CatalogLoadingEvent {
     isLoading: boolean;
@@ -34,8 +43,8 @@ export class AppPresenter {
     constructor(
         private state: AppState,
         private events: EventEmitter,
-        private api: ApiService
-    ) {
+        private api: ApiService,
+        private views: AppViews) {
         this.initializeViews();
         this.initializePresenters();
         this.setupEventHandlers();
@@ -48,7 +57,7 @@ export class AppPresenter {
         this.basketView = new BasketView(cloneTemplate('#basket'), this.events);
         this.orderFormView = new OrderFormView(cloneTemplate('#order'), this.events);
         this.contactsFormView = new ContactsFormView(cloneTemplate('#contacts'), this.events);
-        this.successView = new SuccessView(cloneTemplate('#success'), this.events);
+        this.successView = new SuccessView(cloneTemplate('#success'));
     }
 
     private initializePresenters() {
@@ -63,15 +72,8 @@ export class AppPresenter {
     }
 
     private setupEventHandlers() {
-        this.events.on('basket:open', () => {
-            this.modal.render({
-                content: this.basketView.render({
-                    items: this.state.getBasketItems(),
-                    total: this.state.getBasketTotal()
-                })
-            });
-        });
 
+        this.events.on('basket:open', () => this.openBasket());
         this.events.on('order:start', () => {
             this.modal.render({
                 content: this.orderFormView.render({
@@ -95,28 +97,56 @@ export class AppPresenter {
             });
         });
 
-        this.events.on('order:success', (event: { id: string, total: number }) => {
-            this.state.clearBasket();
-            this.modal.render({
-                content: this.successView.render({
-                    total: event.total
-                })
+        // Обработка открытия успешного заказа
+        this.events.on('order:success', (event: { total: number }) => {
+            const successElement = cloneTemplate('#success');
+            const successView = new SuccessView(successElement);
+
+            successElement.addEventListener('success:close', () => {
+                this.modal.close();
             });
-            this.updateBasketCounter();
+
+            this.modal.render({
+                content: successView.render({ total: event.total })
+            });
+        });
+
+        // Общий обработчик закрытия
+        this.events.on('modal:close', () => {
+            this.pageView.setLocked(false);
         });
 
         this.events.on('modal:open', () => this.pageView.setLocked(true));
-        this.events.on('modal:close', () => this.pageView.setLocked(false));
+        // Закрытие через крестик
+        this.events.on('modal:close', () => { this.pageView.setLocked(false); });
+
+        // Закрытие через кнопку в SuccessView
+        this.events.on('success:close', () => {
+            this.modal.close();
+            this.pageView.setLocked(false);
+
+            // Дополнительные действия при закрытии через success (если нужны)
+            this.events.emit('order:completed');
+        });
+
         this.events.on('basket:changed', () => {
             this.updateBasketCounter();
+
+            // Обновляем превью товара, если модальное окно открыто
             const modalContent = this.modal.getContent();
-            if (modalContent?.querySelector('#card-preview')) {
-                const cardElement = modalContent.querySelector('.card');
-                const productId = cardElement?.getAttribute('data-id');
-                if (productId) {
-                    const product = this.state.getCatalog().find(p => p.id === productId);
-                    if (product) {
-                        this.showProductPreview(product.data);
+            if (modalContent && this.modal.isOpen()) { // Теперь isOpen() существует
+                const previewCard = modalContent.querySelector('.card');
+                if (previewCard) {
+                    const productId = previewCard.getAttribute('data-id');
+                    if (productId) {
+                        const product = this.state.getCatalog().find(p => p.id === productId);
+                        if (product) {
+                            // Обновляем кнопку в превью
+                            const button = previewCard.querySelector('.card__button');
+                            if (button) {
+                                button.textContent = this.state.isInBasket(productId) ? 'Убрать' : 'В корзину';
+                            }
+                        }
                     }
                 }
             }
@@ -146,37 +176,68 @@ export class AppPresenter {
     }
 
     private renderProductCatalog() {
-        const gallery = ensureElement('.gallery');
-        gallery.innerHTML = '';
-
-        this.state.getCatalog().forEach((product: ProductModel) => {
+        const galleryItems = this.state.getCatalog().map(product => {
             const productElement = cloneTemplate('#card-catalog');
             const productView = new ProductView(productElement, {
-                onClick: () => this.showProductPreview(product.data)
+                onClick: () => this.showProductPreview(product)
             });
-
-            productView.render(product.data);
-            gallery.appendChild(productElement);
+            return productView.render(product.data);
         });
 
+        this.pageView.setGalleryItems(galleryItems);
         this.updateBasketCounter();
     }
 
-    private showProductPreview(productData: IProduct) {
+    private showProductPreview(product: ProductModel) {
         const previewElement = cloneTemplate('#card-preview');
-        const product = new ProductModel(productData, this.events);
-        product.renderID(previewElement);
-
         const previewView = new ProductCardView(previewElement);
-        new ProductCardPresenter(product, previewView, this.events);
 
-        previewView.render({
+        // Устанавливаем атрибут data-id для поиска карточки позже
+        previewElement.querySelector('.card')?.setAttribute('data-id', product.id);
+
+        previewView.onBasketToggle = (inBasket: boolean) => {
+            if (inBasket) {
+                product.addToBasket();
+            } else {
+                product.removeFromBasket();
+            }
+            // После изменения корзины сразу обновляем кнопку
+            previewView.updateButtonState(this.state.isInBasket(product.id));
+        };
+
+        previewView.onClick = () => {
+            this.events.emit('modal:close');
+        };
+
+        const renderedPreview = previewView.render({
             ...product.data,
             inBasket: this.state.isInBasket(product.id)
         });
 
         this.modal.render({
-            content: previewElement
+            content: renderedPreview
+        });
+    }
+
+    private openBasket() {
+        const basketItems = this.state.getBasketItems()
+            .filter(item => item && item.data) // Фильтруем невалидные элементы
+            .map((item, index) => {
+                const element = cloneTemplate('#card-basket');
+                const view = new BasketItemView(element, this.events);
+                return view.render({
+                    ...item.data,
+                    index
+                });
+            });
+
+        const renderedBasket = this.basketView.render({
+            items: basketItems,
+            total: this.state.getBasketTotal()
+        });
+
+        this.modal.render({
+            content: renderedBasket
         });
     }
 
